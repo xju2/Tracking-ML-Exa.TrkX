@@ -4,7 +4,6 @@ import torch.nn as nn
 import torch
 import pandas as pd
 import numpy as np
-import cupy as cp
 
 # ---------------------------- Dataset Processing -------------------------
 
@@ -72,6 +71,7 @@ def random_edge_slice_v2(delta_phi, batch):
     """
     Same behaviour as v1, but avoids the expensive calls to np.isin and np.unique, using sparse operations on GPU
     """
+    import cupy as cp
     # 1. Select random phi
     random_phi = np.random.rand() * 2 - 1
     e = batch.e_radius.to("cpu").numpy()
