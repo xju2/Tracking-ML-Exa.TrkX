@@ -13,9 +13,9 @@ from torch2onnx import e_output_name, f_output_name, g_output_name
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 device_id = 0
 embedding_dim = 8
-r_val = 1.0
-knn_val = 100
-filter_cut = 0.1
+r_val = 1.6
+knn_val = 20
+filter_cut = 0.05
 
 
 def create_sessions(provider='CPUExecutionProvider'):
@@ -84,31 +84,11 @@ def run_session_with_iobinding(
             val, device_type=device, device_id=device_id)
         io_binding.bind_ortvalue_input(key, x_ort_val)
 
-    
     y_ort_val = onnxruntime.OrtValue.ortvalue_from_shape_and_type(
         output_shape, element_type, device)
     io_binding.bind_ortvalue_output(output_name, y_ort_val)
 
-
-    # io_binding.bind_input(
-    #     name=input_name,
-    #     device_type=x_ort_val.device_name(),
-    #     device_id=device_id, element_type=element_type, 
-    #     shape=x_ort_val.shape(), buffer_ptr=x_ort_val.data_ptr())
-
-    # io_binding.bind_output(
-    #     name=output_name,
-    #     device_type=y_ort_val.device_name(),
-    #     device_id=device_id, element_type=element_type,
-    #     shape=y_ort_val.shape(), buffer_ptr=y_ort_val.data_ptr())
-
-    # print(x_ort_val.device_name(), x_ort_val.data_type())
-    
-    
-
-    # io_binding.bind_output('output')
     sess.run_with_iobinding(io_binding)
-    # return io_binding.get_outputs()[0]
     return io_binding.copy_outputs_to_cpu()[0]
 
 
@@ -169,9 +149,16 @@ def inference(in_data):
     output = torch.FloatTensor(output).squeeze()
     output = torch.sigmoid(output)
     edge_list = e_spatial[:, output > filter_cut]
-
+    print(edge_list.shape)
     print("in GNNs")
-    
+    g_input_data = {
+        g_input_name[0]: in_data.cpu().numpy(),
+        g_input_name[1]: edge_list.cpu().numpy()
+    }
+    gnn_output = run_session_with_iobinding(
+        g_sess, g_input_data, g_output_name[0],
+        output_shape=(edge_list.shape[1],))
+    print(gnn_output)
 
 
 def process_one_evt():
@@ -189,4 +176,6 @@ if __name__ == '__main__':
     filename = '/home/xju/ocean/lrt/data/NoPileUp_5K_withTruth_processed/1234'
     data = torch.load(filename, map_location=device)
     print(data)
+    input_data = data.x.cpu().numpy()
+    scales = np.array([3000, np.pi, 400])
     inference(data.x.cpu().numpy())
