@@ -27,9 +27,6 @@ def create_sessions(provider='CPUExecutionProvider'):
 
     models = [ onnxruntime.InferenceSession(onnx_name, sess_options, providers=[provider]) 
         for onnx_name in (e_onnx_name, f_onnx_name, g_onnx_name)]
-    
-    # [x.set_providers([provider]) for x in models]
-
     return models
 
 
@@ -55,6 +52,9 @@ def build_edges_frnn(spatial, r_val, knn_val):
 
 def build_edges_faiss(spatial, r_val, knn_val):
     import faiss
+    if type(spatial) == torch.Tensor:
+        spatial = spatial.cpu().numpy()
+
     if device == "cuda":
         res = faiss.StandardGpuResources()
         D, I = faiss.knn_gpu(res, spatial, spatial, knn_val)
@@ -63,9 +63,10 @@ def build_edges_faiss(spatial, r_val, knn_val):
         index.add(spatial)
         D, I = index.search(spatial, knn_val)
 
+    D, I = torch.Tensor(D).to(device), torch.Tensor(I).to(device)
     ind = torch.Tensor.repeat(torch.arange(I.shape[0], device=device), (I.shape[1], 1), 1).T
     edge_list = torch.stack([ind[D <= r_val**2], I[D <= r_val**2]])
-    # dist_list = D[D <= r_val**2]
+    edge_list = edge_list.type(torch.long)
     
     return edge_list
 
@@ -94,13 +95,14 @@ def run_session_with_iobinding(
 
 # following code is largely taken from 
 # https://github.com/exatrkx/exatrkx-work/blob/libtorch-frnn/Inference/notebooks/inferenceOnnxFrnnGnn.py
-def inference(in_data):
+def inference_onnx(in_data):
     # in_data should be [r, phi, z]. Order matters.
     if device == "cuda":
         models = create_sessions('CUDAExecutionProvider')
     else:
         models = create_sessions()
 
+    # Embedding
     e_sess, f_sess, g_sess = models
     e_input_data = {
         e_input_name[0]: in_data
@@ -115,30 +117,12 @@ def inference(in_data):
 
     e_spatial = build_edges(spatial, r_val=r_val, knn_val=knn_val)
 
+    
     in_data = torch.tensor(in_data, device=device)
     r_dist = torch.sqrt(in_data[:, 0]**2 + in_data[:, 2]**2)
     e_spatial = e_spatial[:, (r_dist[e_spatial[0]] <= r_dist[e_spatial[1]])]
 
-    print("in filtering")
-    ## this splits edges into batches and then performa inference.
-    ## For the data without pileup, it was not necessary
-    # # filtering stage requires splitting the data into batches
-    # f_batch_size = 800_000
-    # f_loader = torch.split(e_spatial, f_batch_size, dim=1)
-    # output_list = []
-    # for _, sample in enumerate(f_loader):
-    #     f_input_data = {
-    #         f_input_name[0]: in_data.cpu().numpy(),
-    #         f_input_name[1]: sample.cpu().numpy(),
-    #     }
-    #     output = run_session_with_iobinding(
-    #         f_sess, f_input_data, f_output_name[0],
-    #         output_shape=(sample.shape[1], 1))
-    #     output_list.append(output)
-    # output_list = np.concatenate(output_list, axis=None)
-    # output_list = torch.FloatTensor(output_list)
-    # output = torch.sigmoid(output_list)
-
+    # Filtering
     f_input_data = {
         f_input_name[0]: in_data.cpu().numpy(),
         f_input_name[1]: e_spatial.cpu().numpy(),
@@ -149,8 +133,8 @@ def inference(in_data):
     output = torch.FloatTensor(output).squeeze()
     output = torch.sigmoid(output)
     edge_list = e_spatial[:, output > filter_cut]
-    print(edge_list.shape)
-    print("in GNNs")
+
+    # GNN
     g_input_data = {
         g_input_name[0]: in_data.cpu().numpy(),
         g_input_name[1]: edge_list.cpu().numpy()
@@ -158,11 +142,44 @@ def inference(in_data):
     gnn_output = run_session_with_iobinding(
         g_sess, g_input_data, g_output_name[0],
         output_shape=(edge_list.shape[1],))
-    print(gnn_output)
+    gnn_output = torch.FloatTensor(gnn_output)
+    gnn_output = torch.sigmoid(gnn_output)
+    print(gnn_output[gnn_output > 0.4])
 
 
-def process_one_evt():
-    pass
+def inference_model(in_data):
+    from torch2onnx import load_models
+    models = load_models()
+    [m.to(device) for m in models]
+    e_model, f_model, g_model = models
+
+
+    in_data = torch.FloatTensor(in_data).to(device)
+    with torch.no_grad():
+        spatial = e_model(in_data)
+    
+    e_spatial = build_edges(spatial, r_val=r_val, knn_val=knn_val)
+    r_dist = torch.sqrt(in_data[:, 0]**2 + in_data[:, 2]**2)
+    e_spatial = e_spatial[:, (r_dist[e_spatial[0]] <= r_dist[e_spatial[1]])]
+
+    # <TODO: why they are here? Taken from Embedding/model/Models/inference.py>
+    # random_flip = torch.randint(2, (e_spatial.shape[1],)).bool()
+    # e_spatial[0, random_flip], e_spatial[1, random_flip] = (
+    #     e_spatial[1, random_flip],
+    #     e_spatial[0, random_flip],
+    # )
+
+
+    with torch.no_grad():
+        output = f_model(in_data, e_spatial)
+    output = output.squeeze()
+    output = torch.sigmoid(output)
+    edge_list = e_spatial[:, output > filter_cut]
+
+    with torch.no_grad():
+        gnn_output = g_model(in_data, edge_list)
+    gnn_output = torch.sigmoid(gnn_output)
+    print(gnn_output[gnn_output > 0.4])
 
 
 
@@ -177,5 +194,6 @@ if __name__ == '__main__':
     data = torch.load(filename, map_location=device)
     print(data)
     input_data = data.x.cpu().numpy()
+    print(input_data[0])
     scales = np.array([3000, np.pi, 400])
-    inference(data.x.cpu().numpy())
+    inference_model(data.x.cpu().numpy())

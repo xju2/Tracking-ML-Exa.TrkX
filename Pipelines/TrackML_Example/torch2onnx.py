@@ -55,6 +55,31 @@ g_dynamic_axes = {
 # input and output dimentions for each step
 e_input_size = 3
 
+def load_models():
+    from LightningModules.Embedding.Models.layerless_embedding import LayerlessEmbedding
+    e_ckpt = torch.load(embed_ckpt_dir, map_location=device)
+    e_config = e_ckpt['hyper_parameters']
+    e_model = LayerlessEmbedding(e_config)
+    e_model.load_state_dict(e_ckpt["state_dict"])
+    e_model.eval()
+
+    from LightningModules.Filter.Models.vanilla_filter import VanillaFilter
+    f_ckpt = torch.load(filtering_ckpt_dir, map_location=device)
+    f_config = f_ckpt['hyper_parameters']
+    f_model = VanillaFilter(f_config).to(device)
+    f_model.load_state_dict(f_ckpt['state_dict'])
+    f_model.eval()
+
+    from LightningModules.GNN.Models.agnn import ResAGNN
+    g_ckpt = torch.load(gnn_ckpt_dir, map_location=device)
+    g_config = g_ckpt['hyper_parameters']
+    g_model = ResAGNN(g_config)
+    g_model.load_state_dict(g_ckpt['state_dict'])
+    g_model.eval()
+
+    return [e_model, f_model, g_model]
+
+
 def process():
     os.makedirs(outdir, exist_ok=True)
 
@@ -64,16 +89,11 @@ def process():
 
     batch_size = 1
 
+    # Load all models
+    e_model, f_model, g_model = load_models()
+
+
     # Embedding
-    from LightningModules.Embedding.Models.layerless_embedding import LayerlessEmbedding
-    e_ckpt = torch.load(embed_ckpt_dir, map_location=device)
-    e_config = e_ckpt['hyper_parameters']
-    e_model = LayerlessEmbedding(e_config)
-    e_model.load_state_dict(e_ckpt["state_dict"])
-    e_model.eval()
-    print(e_model)
-
-
     dummy_input = torch.randn(batch_size, e_input_size, requires_grad=True)
 
     torch.onnx.export(e_model, dummy_input,
@@ -85,13 +105,6 @@ def process():
 
 
     # Filtering
-    from LightningModules.Filter.Models.vanilla_filter import VanillaFilter
-    f_ckpt = torch.load(filtering_ckpt_dir, map_location=device)
-    f_config = f_ckpt['hyper_parameters']
-    f_model = VanillaFilter(f_config).to(device)
-    f_model.load_state_dict(f_ckpt['state_dict'])
-    f_model.eval()
-
     dummy_node_input = torch.ones(batch_size*2, e_input_size, requires_grad=False, device=device)
     dummy_edge_input = torch.ones(2, batch_size, requires_grad=False, device=device, dtype=torch.long)
     print(dummy_edge_input.shape)
@@ -107,13 +120,6 @@ def process():
     print("Filtering is done")
 
     # GNN
-    from LightningModules.GNN.Models.agnn import ResAGNN
-    g_ckpt = torch.load(gnn_ckpt_dir, map_location=device)
-    g_config = g_ckpt['hyper_parameters']
-    g_model = ResAGNN(g_config)
-    g_model.load_state_dict(g_ckpt['state_dict'])
-    g_model.eval()
-
     torch.onnx.export(g_model, dummy_input, g_onnx_name,
                     input_names=g_input_name,
                     output_names=g_output_name,
