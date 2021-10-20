@@ -139,28 +139,39 @@ def inference(in_data):
     r_dist = torch.sqrt(in_data[:, 0]**2 + in_data[:, 2]**2)
     e_spatial = e_spatial[:, (r_dist[e_spatial[0]] <= r_dist[e_spatial[1]])]
 
-    # filtering stage requires splitting the data into batches
-    f_batch_size = 800_000
-    f_loader = torch.split(e_spatial, f_batch_size, dim=1)
-
     print("in filtering")
-    output_list = []
-    for _, sample in enumerate(f_loader):
-        f_input_data = {
-            f_input_name[0]: in_data.cpu().numpy(),
-            f_input_name[1]: sample.cpu().numpy(),
-        }
-        output = run_session_with_iobinding(
-            f_sess, f_input_data, f_output_name[0],
-            output_shape=(sample.shape[1], 1))
-        output_list.append(output)
+    ## this splits edges into batches and then performa inference.
+    ## For the data without pileup, it was not necessary
+    # # filtering stage requires splitting the data into batches
+    # f_batch_size = 800_000
+    # f_loader = torch.split(e_spatial, f_batch_size, dim=1)
+    # output_list = []
+    # for _, sample in enumerate(f_loader):
+    #     f_input_data = {
+    #         f_input_name[0]: in_data.cpu().numpy(),
+    #         f_input_name[1]: sample.cpu().numpy(),
+    #     }
+    #     output = run_session_with_iobinding(
+    #         f_sess, f_input_data, f_output_name[0],
+    #         output_shape=(sample.shape[1], 1))
+    #     output_list.append(output)
+    # output_list = np.concatenate(output_list, axis=None)
+    # output_list = torch.FloatTensor(output_list)
+    # output = torch.sigmoid(output_list)
 
-    output_list = np.concatenate(output_list, axis=None)
-    output_list = torch.FloatTensor(output_list)
-    output = torch.sigmoid(output_list)
-
+    f_input_data = {
+        f_input_name[0]: in_data.cpu().numpy(),
+        f_input_name[1]: e_spatial.cpu().numpy(),
+    }
+    output = run_session_with_iobinding(
+        f_sess, f_input_data, f_output_name[0],
+        output_shape=(e_spatial.shape[1], 1))
+    output = torch.FloatTensor(output).squeeze()
+    output = torch.sigmoid(output)
     edge_list = e_spatial[:, output > filter_cut]
-    print(edge_list)
+
+    print("in GNNs")
+    
 
 
 def process_one_evt():
