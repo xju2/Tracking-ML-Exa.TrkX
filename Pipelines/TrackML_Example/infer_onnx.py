@@ -1,4 +1,5 @@
 """Use onnxruntime to exectute the inference pipeline"""
+import os
 
 import numpy as np
 import onnxruntime
@@ -70,7 +71,7 @@ def build_edges_faiss(spatial, r_val, knn_val):
     
     return edge_list
 
-build_edges = build_edges_frnn
+build_edges = build_edges_faiss
 
 def run_session_with_iobinding(
     sess, input_data_map, output_name, output_shape,
@@ -116,11 +117,10 @@ def inference_onnx(in_data):
     spatial = torch.tensor(spatial).to(device)
 
     e_spatial = build_edges(spatial, r_val=r_val, knn_val=knn_val)
-
-    
     in_data = torch.tensor(in_data, device=device)
     r_dist = torch.sqrt(in_data[:, 0]**2 + in_data[:, 2]**2)
     e_spatial = e_spatial[:, (r_dist[e_spatial[0]] <= r_dist[e_spatial[1]])]
+    print("ONNX:", e_spatial.shape)
 
     # Filtering
     f_input_data = {
@@ -132,7 +132,8 @@ def inference_onnx(in_data):
         output_shape=(e_spatial.shape[1], 1))
     output = torch.FloatTensor(output).squeeze()
     output = torch.sigmoid(output)
-    edge_list = e_spatial[:, output > filter_cut]
+    edge_list = e_spatial[:, output >= filter_cut]
+    print("ONNX:", edge_list.shape)
 
     # GNN
     g_input_data = {
@@ -144,7 +145,10 @@ def inference_onnx(in_data):
         output_shape=(edge_list.shape[1],))
     gnn_output = torch.FloatTensor(gnn_output)
     gnn_output = torch.sigmoid(gnn_output)
-    print(gnn_output[gnn_output > 0.4])
+    print("ONNX", gnn_output[gnn_output > 0.4].shape)
+    print("ONNX", gnn_output[gnn_output > 0.4])
+
+    return spatial.cpu().numpy(), output.cpu().numpy(), gnn_output.cpu().numpy()
 
 
 def inference_model(in_data):
@@ -162,24 +166,26 @@ def inference_model(in_data):
     r_dist = torch.sqrt(in_data[:, 0]**2 + in_data[:, 2]**2)
     e_spatial = e_spatial[:, (r_dist[e_spatial[0]] <= r_dist[e_spatial[1]])]
 
-    # <TODO: why they are here? Taken from Embedding/model/Models/inference.py>
-    # random_flip = torch.randint(2, (e_spatial.shape[1],)).bool()
-    # e_spatial[0, random_flip], e_spatial[1, random_flip] = (
-    #     e_spatial[1, random_flip],
-    #     e_spatial[0, random_flip],
-    # )
+    print(e_spatial.shape)
+    # np.savez("spatial.npz", e_spatial=e_spatial.cpu().numpy())
 
 
     with torch.no_grad():
         output = f_model(in_data, e_spatial)
     output = output.squeeze()
     output = torch.sigmoid(output)
-    edge_list = e_spatial[:, output > filter_cut]
+    edge_list = e_spatial[:, output >= filter_cut]
+
+    print(edge_list.shape)
 
     with torch.no_grad():
         gnn_output = g_model(in_data, edge_list)
     gnn_output = torch.sigmoid(gnn_output)
+    print(gnn_output[gnn_output > 0.4].shape)
     print(gnn_output[gnn_output > 0.4])
+
+    return spatial.cpu().numpy(), output.cpu().numpy(), gnn_output.cpu().numpy()
+
 
 
 
@@ -195,5 +201,11 @@ if __name__ == '__main__':
     print(data)
     input_data = data.x.cpu().numpy()
     print(input_data[0])
-    scales = np.array([3000, np.pi, 400])
-    inference_model(data.x.cpu().numpy())
+
+    scales = np.array([3000, np.pi, 400], dtype=np.float32)
+    res_model = inference_model(data.x.cpu().numpy() / scales)
+
+    res_onnx = inference_onnx(data.x.cpu().numpy() / scales)
+
+    for x,y in zip(res_model, res_onnx):
+        print(np.sum(x-y))

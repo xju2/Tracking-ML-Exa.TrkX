@@ -66,6 +66,8 @@ def load_models():
     from LightningModules.Filter.Models.vanilla_filter import VanillaFilter
     f_ckpt = torch.load(filtering_ckpt_dir, map_location=device)
     f_config = f_ckpt['hyper_parameters']
+    f_config['regime'] = []
+    # print(f_config['regime'])
     f_model = VanillaFilter(f_config).to(device)
     f_model.load_state_dict(f_ckpt['state_dict'])
     f_model.eval()
