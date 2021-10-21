@@ -146,9 +146,9 @@ def inference_onnx(in_data):
     gnn_output = torch.FloatTensor(gnn_output)
     gnn_output = torch.sigmoid(gnn_output)
     print("ONNX", gnn_output[gnn_output > 0.4].shape)
-    print("ONNX", gnn_output[gnn_output > 0.4])
+    print("ONNX", gnn_output[gnn_output > 0.4])    
 
-    return spatial.cpu().numpy(), output.cpu().numpy(), gnn_output.cpu().numpy()
+    return spatial.cpu().numpy(), output.cpu().numpy(), gnn_output.cpu().numpy(), edge_list.cpu().numpy()
 
 
 def inference_model(in_data):
@@ -167,8 +167,6 @@ def inference_model(in_data):
     e_spatial = e_spatial[:, (r_dist[e_spatial[0]] <= r_dist[e_spatial[1]])]
 
     print(e_spatial.shape)
-    # np.savez("spatial.npz", e_spatial=e_spatial.cpu().numpy())
-
 
     with torch.no_grad():
         output = f_model(in_data, e_spatial)
@@ -184,10 +182,47 @@ def inference_model(in_data):
     print(gnn_output[gnn_output > 0.4].shape)
     print(gnn_output[gnn_output > 0.4])
 
-    return spatial.cpu().numpy(), output.cpu().numpy(), gnn_output.cpu().numpy()
+    return spatial.cpu().numpy(), output.cpu().numpy(), gnn_output.cpu().numpy(), edge_list.cpu().numpy()
 
 
+def tracks_from_gnn(hit_id, score, senders, receivers,
+    edge_score_cut=0., epsilon=0.25, min_samples=2, **kwargs):
 
+    import scipy as sp
+    from sklearn.cluster import DBSCAN
+    import pandas as pd 
+    n_nodes = hit_id.shape[0]
+    if edge_score_cut > 0:
+        cuts = score > edge_score_cut
+        score, senders, receivers = score[cuts], senders[cuts], receivers[cuts]
+        
+    # prepare the DBSCAN input, which the adjancy matrix with its value being the edge socre.
+    e_csr = sp.sparse.csr_matrix((score, (senders, receivers)),
+        shape=(n_nodes, n_nodes), dtype=np.float32)
+    # rescale the duplicated edges
+    e_csr.data[e_csr.data > 1] = e_csr.data[e_csr.data > 1]/2.
+    # invert to treat score as an inverse distance
+    e_csr.data = 1 - e_csr.data
+    # make it symmetric
+    e_csr_bi = sp.sparse.coo_matrix(
+        (np.hstack([e_csr.tocoo().data, e_csr.tocoo().data]), 
+        np.hstack([np.vstack([e_csr.tocoo().row, e_csr.tocoo().col]),                                                                   
+        np.vstack([e_csr.tocoo().col, e_csr.tocoo().row])])))
+
+    # DBSCAN get track candidates
+    clustering = DBSCAN(
+        eps=epsilon, metric='precomputed',
+        min_samples=min_samples).fit_predict(e_csr_bi)
+    track_labels = np.vstack(
+        [np.unique(e_csr_bi.tocoo().row),
+        clustering[np.unique(e_csr_bi.tocoo().row)]])
+    track_labels = pd.DataFrame(track_labels.T)
+    track_labels.columns = ["hit_id", "track_id"]
+    new_hit_id = np.apply_along_axis(
+        lambda x: hit_id[x], 0, track_labels.hit_id.values)
+    tracks = pd.DataFrame.from_dict(
+        {"hit_id": new_hit_id, "track_id": track_labels.track_id})
+    return tracks
 
 if __name__ == '__main__':
     import argparse
@@ -196,7 +231,8 @@ if __name__ == '__main__':
     # add_arg('', help='')
     
     args = parser.parse_args()
-    filename = '/home/xju/ocean/lrt/data/NoPileUp_5K_withTruth_processed/1234'
+    evtid = 1234
+    filename = f'/home/xju/ocean/lrt/data/NoPileUp_5K_withTruth_processed/{evtid}'
     data = torch.load(filename, map_location=device)
     print(data)
     input_data = data.x.cpu().numpy()
@@ -207,5 +243,20 @@ if __name__ == '__main__':
 
     res_onnx = inference_onnx(data.x.cpu().numpy() / scales)
 
-    for x,y in zip(res_model, res_onnx):
+    for x,y in zip(res_model[:3], res_onnx[:3]):
         print(np.sum(x-y))
+
+
+    hid = data.hid.cpu().numpy()
+    reco_tracks = tracks_from_gnn(
+        hid, res_model[2], res_model[3][0], res_model[3][1])
+    
+    outdir = "tracks_from_models"
+    os.makedirs(outdir, exist_ok=True)
+    np.savez(os.path.join(outdir, f"{evtid}.npz"), predicts=reco_tracks)
+
+    outdir = "tracks_from_onnx"
+    os.makedirs(outdir, exist_ok=True)
+    reco_tracks_onnx = tracks_from_gnn(
+        hid, res_onnx[2], res_onnx[3][0], res_onnx[3][1])
+    np.savez(os.path.join(outdir, f"{evtid}.npz"), predicts=reco_tracks)

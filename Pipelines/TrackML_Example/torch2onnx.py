@@ -133,6 +133,5 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Convert trained ExaTrkx model to onnx')
     add_arg = parser.add_argument
-        
     args = parser.parse_args()
     process()
