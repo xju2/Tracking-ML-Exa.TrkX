@@ -41,15 +41,15 @@ e_dynamic_axes = {
 f_input_name = ["f_nodes", "f_edges"]
 f_output_name = ["f_edge_score"]
 f_dynamic_axes = {
-    f_input_name[0]: [0, 1],
-    f_input_name[1]: [0, 1],
+    f_input_name[0]: [0],
+    f_input_name[1]: [1],
 }
 
 g_input_name = ["g_nodes", "g_edges"]
 g_output_name = ["gnn_edge_score"]
 g_dynamic_axes = {
-    g_input_name[0]: [0, 1],
-    g_input_name[1]: [0, 1],
+    g_input_name[0]: [0],
+    g_input_name[1]: [1],
 }
 
 # input and output dimentions for each step
