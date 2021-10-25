@@ -15,7 +15,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 device_id = 0
 embedding_dim = 8
 r_val = 1.6
-knn_val = 20
+knn_val = 500
 filter_cut = 0.05
 
 
@@ -47,7 +47,7 @@ def build_edges_frnn(spatial, r_val, knn_val):
     dist_list = dists.squeeze()[positive_idxs]
 
     # Remove self-loops and those outsize radius
-    edge_list = edge_list[:, (edge_list[0] != edge_list[1]) & (dist_list <= r_val)]
+    # edge_list = edge_list[:, (edge_list[0] != edge_list[1]) & (dist_list <= r_val)]
     return edge_list
 
 
@@ -69,6 +69,8 @@ def build_edges_faiss(spatial, r_val, knn_val):
     edge_list = torch.stack([ind[D <= r_val**2], I[D <= r_val**2]])
     edge_list = edge_list.type(torch.long)
     
+    edge_list = edge_list[:, edge_list[0] != edge_list[1]]
+
     return edge_list
 
 build_edges = build_edges_faiss
