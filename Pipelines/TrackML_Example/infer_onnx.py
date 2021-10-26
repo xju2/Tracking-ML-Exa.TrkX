@@ -7,7 +7,7 @@ import onnxruntime
 import torch
 from torch import onnx
 
-from torch2onnx import e_onnx_name, f_onnx_name, g_onnx_name
+from torch2onnx import e_onnx_name, f_onnx_name, g_onnx_name, process
 from torch2onnx import e_input_name, f_input_name, g_input_name
 from torch2onnx import e_output_name, f_output_name, g_output_name
 
@@ -122,7 +122,7 @@ def inference_onnx(in_data):
     in_data = torch.tensor(in_data, device=device)
     r_dist = torch.sqrt(in_data[:, 0]**2 + in_data[:, 2]**2)
     e_spatial = e_spatial[:, (r_dist[e_spatial[0]] <= r_dist[e_spatial[1]])]
-    print("ONNX:", e_spatial.shape)
+    # print("ONNX:", e_spatial.shape)
 
     # Filtering
     f_input_data = {
@@ -135,7 +135,7 @@ def inference_onnx(in_data):
     output = torch.FloatTensor(output).squeeze()
     output = torch.sigmoid(output)
     edge_list = e_spatial[:, output >= filter_cut]
-    print("ONNX:", edge_list.shape)
+    # print("ONNX:", edge_list.shape)
 
     # GNN
     g_input_data = {
@@ -147,8 +147,8 @@ def inference_onnx(in_data):
         output_shape=(edge_list.shape[1],))
     gnn_output = torch.FloatTensor(gnn_output)
     gnn_output = torch.sigmoid(gnn_output)
-    print("ONNX", gnn_output[gnn_output > 0.4].shape)
-    print("ONNX", gnn_output[gnn_output > 0.4])    
+    # print("ONNX", gnn_output[gnn_output > 0.4].shape)
+    # print("ONNX", gnn_output[gnn_output > 0.4])    
 
     return spatial.cpu().numpy(), output.cpu().numpy(), gnn_output.cpu().numpy(), edge_list.cpu().numpy()
 
@@ -168,7 +168,7 @@ def inference_model(in_data):
     r_dist = torch.sqrt(in_data[:, 0]**2 + in_data[:, 2]**2)
     e_spatial = e_spatial[:, (r_dist[e_spatial[0]] <= r_dist[e_spatial[1]])]
 
-    print(e_spatial.shape)
+    # print(e_spatial.shape)
 
     with torch.no_grad():
         output = f_model(in_data, e_spatial)
@@ -176,13 +176,13 @@ def inference_model(in_data):
     output = torch.sigmoid(output)
     edge_list = e_spatial[:, output >= filter_cut]
 
-    print(edge_list.shape)
+    # print(edge_list.shape)
 
     with torch.no_grad():
         gnn_output = g_model(in_data, edge_list)
     gnn_output = torch.sigmoid(gnn_output)
-    print(gnn_output[gnn_output > 0.4].shape)
-    print(gnn_output[gnn_output > 0.4])
+    # print(gnn_output[gnn_output > 0.4].shape)
+    # print(gnn_output[gnn_output > 0.4])
 
     return spatial.cpu().numpy(), output.cpu().numpy(), gnn_output.cpu().numpy(), edge_list.cpu().numpy()
 
@@ -226,39 +226,80 @@ def tracks_from_gnn(hit_id, score, senders, receivers,
         {"hit_id": new_hit_id, "track_id": track_labels.track_id})
     return tracks
 
-if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser(description='Onnxruntime based inference.')
-    add_arg = parser.add_argument
-    # add_arg('', help='')
-    
-    args = parser.parse_args()
-    evtid = 1234
-    filename = f'/home/xju/ocean/lrt/data/NoPileUp_5K_withTruth_processed/{evtid}'
+
+def process_one_evt(evtid, indir, outdir, **kwargs):
+
+    outdir_onnx = os.path.join(outdir, "tracks_from_onnx")
+    os.makedirs(outdir_onnx, exist_ok=True)
+    outdir_model = os.path.join(outdir, "tracks_from_models")
+    os.makedirs(outdir_model, exist_ok=True)
+
+    out_onnx_name = os.path.join(outdir_onnx, f"{evtid}.npz")
+    out_model_name = os.path.join(outdir_model, f"{evtid}.npz")
+    if os.path.exists(out_onnx_name) and os.path.exists(out_model_name):
+        print(f"{evtid} is there, skip.")
+        return
+
+
+    filename = f'{indir}/{evtid}'
     data = torch.load(filename, map_location=device)
-    print(data)
     input_data = data.x.cpu().numpy()
-    print(input_data[0])
 
     scales = np.array([3000, np.pi, 400], dtype=np.float32)
-    res_model = inference_model(data.x.cpu().numpy() / scales)
-
-    res_onnx = inference_onnx(data.x.cpu().numpy() / scales)
-
-    for x,y in zip(res_model[:3], res_onnx[:3]):
-        print(np.sum(x-y))
+    
+    res_model = inference_model(input_data / scales)
+    res_onnx = inference_onnx(input_data / scales)
 
 
     hid = data.hid.cpu().numpy()
-    reco_tracks = tracks_from_gnn(
-        hid, res_model[2], res_model[3][0], res_model[3][1])
-    
-    outdir = "tracks_from_models"
-    os.makedirs(outdir, exist_ok=True)
-    np.savez(os.path.join(outdir, f"{evtid}.npz"), predicts=reco_tracks)
 
-    outdir = "tracks_from_onnx"
-    os.makedirs(outdir, exist_ok=True)
+    # tracks from native model
+    reco_tracks = tracks_from_gnn(
+        hid, res_model[2], res_model[3][0], res_model[3][1], **kwargs)
+    np.savez(out_model_name, predicts=reco_tracks)
+
+    # tracks from onnx model
     reco_tracks_onnx = tracks_from_gnn(
-        hid, res_onnx[2], res_onnx[3][0], res_onnx[3][1])
-    np.savez(os.path.join(outdir, f"{evtid}.npz"), predicts=reco_tracks)
+        hid, res_onnx[2], res_onnx[3][0], res_onnx[3][1], **kwargs)
+    np.savez(out_onnx_name, predicts=reco_tracks_onnx)
+
+
+if __name__ == '__main__':
+    import argparse
+    import glob
+    from functools import partial
+    from multiprocessing import Pool
+    import multiprocessing as mp
+    mp.set_start_method("spawn")
+
+    parser = argparse.ArgumentParser(description='Onnxruntime based inference.')
+    add_arg = parser.add_argument
+    add_arg('-i', "--indir", help='processed ACTS data', required=True)
+    add_arg('-o', "--outdir", help='output directory', required=True)
+    add_arg("--max-evts", help='maximum number of events', type=int, default=1)
+    add_arg("--num-workers", help='number of threads', default=1, type=int)
+
+    # hyperparameters for DB scan
+    add_arg("--epsilon", help='epsilon in DBScan', default=0.4, type=float)
+    add_arg("--min-samples", help='minimum number of samples in DBScan', default=2, type=int)
+    args = parser.parse_args()
+
+    indir, outdir = args.indir, args.outdir
+
+    all_files = glob.glob(os.path.join(indir, "*"))
+    n_tot_files = len(all_files)
+    max_evts = args.max_evts if args.max_evts > 0 and \
+        args.max_evts <= n_tot_files else n_tot_files
+    print("Out of {} events processing {} events with {} workers".format(
+        n_tot_files, max_evts, args.num_workers))
+    all_evtids = [int(os.path.basename(x)) for x in all_files]
+
+    if args.num_workers > 1:
+        # Faiss GPU raised an error 
+        # Faiss assertion 'blasStatus == CUBLAS_STATUS_SUCCESS' failed.
+        with Pool(args.num_workers) as p:
+            process_fnc = partial(process_one_evt, **vars(args))
+            p.map(process_fnc, all_evtids[:max_evts])
+    else:
+        for evtid in all_evtids[:max_evts]:
+            process_one_evt(evtid, **vars(args))
