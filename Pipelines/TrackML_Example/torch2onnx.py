@@ -10,7 +10,9 @@ device = 'cpu'
 ###############################
 # prepare input checkpoints
 ###############################
-models_dir = '/home/xju/ocean/lrt/trained_models_v0'
+#models_dir = '/home/xju/ocean/lrt/trained_models_v0'
+models_dir = '/home/xju/ocean/projects/tracking/lrt/trained_models_v0'
+
 post_fix = 'trained/checkpoints/last.ckpt'
 
 embed_dname = 'Embedding'

@@ -5,13 +5,14 @@ import numpy as np
 import onnxruntime
 
 import torch
-from torch import onnx
 
-from torch2onnx import e_onnx_name, f_onnx_name, g_onnx_name, process
+from torch2onnx import e_onnx_name, f_onnx_name, g_onnx_name
 from torch2onnx import e_input_name, f_input_name, g_input_name
 from torch2onnx import e_output_name, f_output_name, g_output_name
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = 'cpu'
+
 device_id = 0
 embedding_dim = 8
 r_val = 1.6
@@ -98,8 +99,12 @@ def run_session_with_iobinding(
 
 # following code is largely taken from 
 # https://github.com/exatrkx/exatrkx-work/blob/libtorch-frnn/Inference/notebooks/inferenceOnnxFrnnGnn.py
-def inference_onnx(in_data):
+def inference_onnx(in_data, debug=False):
     # in_data should be [r, phi, z]. Order matters.
+    if debug:
+        print("input spacepoints", in_data.shape)
+        print(in_data[0])
+
     if device == "cuda":
         models = create_sessions('CUDAExecutionProvider')
     else:
@@ -114,6 +119,9 @@ def inference_onnx(in_data):
     spatial = run_session_with_iobinding(
         e_sess, e_input_data, e_output_name[0], 
         output_shape=(batch_size, embedding_dim))
+    if debug:
+        print("embedding space")
+        print(spatial[0, ])
 
     # <NOTE> if device is gpu, the movement is useless.
     spatial = torch.tensor(spatial).to(device)
@@ -122,7 +130,9 @@ def inference_onnx(in_data):
     in_data = torch.tensor(in_data, device=device)
     r_dist = torch.sqrt(in_data[:, 0]**2 + in_data[:, 2]**2)
     e_spatial = e_spatial[:, (r_dist[e_spatial[0]] <= r_dist[e_spatial[1]])]
-    # print("ONNX:", e_spatial.shape)
+    if debug:
+        print("ONNX:", e_spatial.shape)
+        print(e_spatial[:, :10])
 
     # Filtering
     f_input_data = {
@@ -135,7 +145,7 @@ def inference_onnx(in_data):
     output = torch.FloatTensor(output).squeeze()
     output = torch.sigmoid(output)
     edge_list = e_spatial[:, output >= filter_cut]
-    # print("ONNX:", edge_list.shape)
+    if debug: print("ONNX:", edge_list.shape)
 
     # GNN
     g_input_data = {
@@ -147,28 +157,29 @@ def inference_onnx(in_data):
         output_shape=(edge_list.shape[1],))
     gnn_output = torch.FloatTensor(gnn_output)
     gnn_output = torch.sigmoid(gnn_output)
-    # print("ONNX", gnn_output[gnn_output > 0.4].shape)
+    if debug: print("ONNX", gnn_output[gnn_output > 0.4].shape)
     # print("ONNX", gnn_output[gnn_output > 0.4])    
 
     return spatial.cpu().numpy(), output.cpu().numpy(), gnn_output.cpu().numpy(), edge_list.cpu().numpy()
 
 
-def inference_model(in_data):
+def inference_model(in_data, debug=False):
     from torch2onnx import load_models
     models = load_models()
     [m.to(device) for m in models]
     e_model, f_model, g_model = models
+    if debug: print(in_data.shape)
 
 
     in_data = torch.FloatTensor(in_data).to(device)
     with torch.no_grad():
         spatial = e_model(in_data)
-    
+
     e_spatial = build_edges(spatial, r_val=r_val, knn_val=knn_val)
     r_dist = torch.sqrt(in_data[:, 0]**2 + in_data[:, 2]**2)
     e_spatial = e_spatial[:, (r_dist[e_spatial[0]] <= r_dist[e_spatial[1]])]
 
-    # print(e_spatial.shape)
+    if debug: print(e_spatial.shape)
 
     with torch.no_grad():
         output = f_model(in_data, e_spatial)
@@ -176,13 +187,13 @@ def inference_model(in_data):
     output = torch.sigmoid(output)
     edge_list = e_spatial[:, output >= filter_cut]
 
-    # print(edge_list.shape)
+    if debug: print(edge_list.shape)
 
     with torch.no_grad():
         gnn_output = g_model(in_data, edge_list)
     gnn_output = torch.sigmoid(gnn_output)
     # print(gnn_output[gnn_output > 0.4].shape)
-    # print(gnn_output[gnn_output > 0.4])
+    if debug: print(gnn_output[gnn_output > 0.4].shape)
 
     return spatial.cpu().numpy(), output.cpu().numpy(), gnn_output.cpu().numpy(), edge_list.cpu().numpy()
 
@@ -223,11 +234,11 @@ def tracks_from_gnn(hit_id, score, senders, receivers,
     new_hit_id = np.apply_along_axis(
         lambda x: hit_id[x], 0, track_labels.hit_id.values)
     tracks = pd.DataFrame.from_dict(
-        {"hit_id": new_hit_id, "track_id": track_labels.track_id})
+        {"track_id": track_labels.track_id, "hit_id": new_hit_id})
     return tracks
 
 
-def process_one_evt(evtid, indir, outdir, **kwargs):
+def process_one_evt(evtid, indir, outdir, debug=False, force=False, **kwargs):
 
     outdir_onnx = os.path.join(outdir, "tracks_from_onnx")
     os.makedirs(outdir_onnx, exist_ok=True)
@@ -236,7 +247,7 @@ def process_one_evt(evtid, indir, outdir, **kwargs):
 
     out_onnx_name = os.path.join(outdir_onnx, f"{evtid}.npz")
     out_model_name = os.path.join(outdir_model, f"{evtid}.npz")
-    if os.path.exists(out_onnx_name) and os.path.exists(out_model_name):
+    if os.path.exists(out_onnx_name) and os.path.exists(out_model_name) and not force:
         print(f"{evtid} is there, skip.")
         return
 
@@ -246,9 +257,9 @@ def process_one_evt(evtid, indir, outdir, **kwargs):
     input_data = data.x.cpu().numpy()
 
     scales = np.array([3000, np.pi, 400], dtype=np.float32)
-    
-    res_model = inference_model(input_data / scales)
-    res_onnx = inference_onnx(input_data / scales)
+
+    res_model = inference_model(input_data / scales, debug=debug)
+    res_onnx = inference_onnx(input_data / scales, debug=debug)
 
 
     hid = data.hid.cpu().numpy()
@@ -282,6 +293,8 @@ if __name__ == '__main__':
     # hyperparameters for DB scan
     add_arg("--epsilon", help='epsilon in DBScan', default=0.4, type=float)
     add_arg("--min-samples", help='minimum number of samples in DBScan', default=2, type=int)
+    add_arg('-d', "--debug", help='debug mode', action='store_true')
+    add_arg('-f', "--force", help='force overwritten', action='store_true')
     args = parser.parse_args()
 
     indir, outdir = args.indir, args.outdir
