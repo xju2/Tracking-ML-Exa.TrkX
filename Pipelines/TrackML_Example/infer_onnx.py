@@ -123,6 +123,7 @@ def inference_onnx(in_data, debug=False):
         print("embedding space")
         print(spatial[0, ])
 
+
     # <NOTE> if device is gpu, the movement is useless.
     spatial = torch.tensor(spatial).to(device)
 
@@ -157,8 +158,8 @@ def inference_onnx(in_data, debug=False):
         output_shape=(edge_list.shape[1],))
     gnn_output = torch.FloatTensor(gnn_output)
     gnn_output = torch.sigmoid(gnn_output)
-    if debug: print("ONNX", gnn_output[gnn_output > 0.4].shape)
-    # print("ONNX", gnn_output[gnn_output > 0.4])    
+    if debug:
+        print("ONNX", gnn_output[gnn_output > 0.4].shape)
 
     return spatial.cpu().numpy(), output.cpu().numpy(), gnn_output.cpu().numpy(), edge_list.cpu().numpy()
 
@@ -267,12 +268,12 @@ def process_one_evt(evtid, indir, outdir, debug=False, force=False, **kwargs):
     # tracks from native model
     reco_tracks = tracks_from_gnn(
         hid, res_model[2], res_model[3][0], res_model[3][1], **kwargs)
-    np.savez(out_model_name, predicts=reco_tracks)
+    np.savez(out_model_name, res_model, predicts=reco_tracks)
 
     # tracks from onnx model
     reco_tracks_onnx = tracks_from_gnn(
         hid, res_onnx[2], res_onnx[3][0], res_onnx[3][1], **kwargs)
-    np.savez(out_onnx_name, predicts=reco_tracks_onnx)
+    np.savez(out_onnx_name, res_onnx, predicts=reco_tracks_onnx)
 
 
 if __name__ == '__main__':
@@ -307,7 +308,7 @@ if __name__ == '__main__':
         n_tot_files, max_evts, args.num_workers))
     all_evtids = [int(os.path.basename(x)) for x in all_files]
 
-    if args.num_workers > 1:
+    if args.num_workers > 1 and args.max_evts > 3:
         # Faiss GPU raised an error 
         # Faiss assertion 'blasStatus == CUBLAS_STATUS_SUCCESS' failed.
         with Pool(args.num_workers) as p:
