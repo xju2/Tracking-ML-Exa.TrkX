@@ -161,7 +161,7 @@ def inference_onnx(in_data, debug=False):
     if debug:
         print("ONNX", gnn_output[gnn_output > 0.4].shape)
 
-    return spatial.cpu().numpy(), output.cpu().numpy(), gnn_output.cpu().numpy(), edge_list.cpu().numpy()
+    return spatial.cpu().numpy(), output.cpu().numpy(), gnn_output.cpu().numpy(), edge_list.cpu().numpy(), e_spatial.cpu().numpy()
 
 
 def inference_model(in_data, debug=False):
@@ -196,7 +196,7 @@ def inference_model(in_data, debug=False):
     # print(gnn_output[gnn_output > 0.4].shape)
     if debug: print(gnn_output[gnn_output > 0.4].shape)
 
-    return spatial.cpu().numpy(), output.cpu().numpy(), gnn_output.cpu().numpy(), edge_list.cpu().numpy()
+    return spatial.cpu().numpy(), output.cpu().numpy(), gnn_output.cpu().numpy(), edge_list.cpu().numpy(), e_spatial.cpu().numpy()
 
 
 def tracks_from_gnn(hit_id, score, senders, receivers,
@@ -209,7 +209,7 @@ def tracks_from_gnn(hit_id, score, senders, receivers,
     if edge_score_cut > 0:
         cuts = score > edge_score_cut
         score, senders, receivers = score[cuts], senders[cuts], receivers[cuts]
-        
+
     # prepare the DBSCAN input, which the adjancy matrix with its value being the edge socre.
     e_csr = sp.sparse.csr_matrix((score, (senders, receivers)),
         shape=(n_nodes, n_nodes), dtype=np.float32)
@@ -219,8 +219,8 @@ def tracks_from_gnn(hit_id, score, senders, receivers,
     e_csr.data = 1 - e_csr.data
     # make it symmetric
     e_csr_bi = sp.sparse.coo_matrix(
-        (np.hstack([e_csr.tocoo().data, e_csr.tocoo().data]), 
-        np.hstack([np.vstack([e_csr.tocoo().row, e_csr.tocoo().col]),                                                                   
+        (np.hstack([e_csr.tocoo().data, e_csr.tocoo().data]),
+        np.hstack([np.vstack([e_csr.tocoo().row, e_csr.tocoo().col]),
         np.vstack([e_csr.tocoo().col, e_csr.tocoo().row])])))
 
     # DBSCAN get track candidates
@@ -268,12 +268,12 @@ def process_one_evt(evtid, indir, outdir, debug=False, force=False, **kwargs):
     # tracks from native model
     reco_tracks = tracks_from_gnn(
         hid, res_model[2], res_model[3][0], res_model[3][1], **kwargs)
-    np.savez(out_model_name, res_model, predicts=reco_tracks)
+    np.savez(out_model_name, *res_model, predicts=reco_tracks)
 
     # tracks from onnx model
     reco_tracks_onnx = tracks_from_gnn(
         hid, res_onnx[2], res_onnx[3][0], res_onnx[3][1], **kwargs)
-    np.savez(out_onnx_name, res_onnx, predicts=reco_tracks_onnx)
+    np.savez(out_onnx_name, *res_onnx, predicts=reco_tracks_onnx)
 
 
 if __name__ == '__main__':
