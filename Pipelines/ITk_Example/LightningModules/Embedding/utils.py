@@ -6,7 +6,7 @@ from torch.utils.data import random_split
 import scipy as sp
 import numpy as np
 import pandas as pd
-import trackml.dataset
+from torch_geometric.data import Data
 
 """
 Ideally, we would be using FRNN and the GPU. But in the case of a user not having a GPU, or not having FRNN, we import FAISS as the 
@@ -14,7 +14,7 @@ nearest neighbor library
 """
 
 import faiss
-import faiss.contrib.torch_utils
+# import faiss.contrib.torch_utils
 
 try:
     import frnn
@@ -29,16 +29,25 @@ else:
     using_faiss = True
 
 
+scales = np.array([1000, np.pi, 1000], dtype=np.float32)
 def load_dataset(input_dir, num, pt_background_cut, pt_signal_cut, nhits, primary_only, true_edges, noise):
     if input_dir is not None:
         all_events = os.listdir(input_dir)
         all_events = sorted([os.path.join(input_dir, event) for event in all_events])
         loaded_events = []
+        print("total events:", len(all_events))
         for event in all_events[:num]:
             try:
-                loaded_event = torch.load(event, map_location=torch.device("cpu"))
+                arrays = np.load(event)
+                loaded_event = Data(
+                    x=torch.from_numpy(arrays['x']).float() /scales,
+                    pid=torch.from_numpy(arrays['pid']),
+                    hid=torch.from_numpy(arrays['hid']),
+                    layerless_true_edges=torch.from_numpy('layerless_true_edges')
+                )
+                # loaded_event = torch.load(event, map_location=torch.device("cpu"))
                 loaded_events.append(loaded_event)
-                logging.info("Loaded event: {}".format(loaded_event.event_file))
+                logging.info("Loaded event: {}".format(event))
             except:
                 logging.info("Corrupted event file: {}".format(event))
         loaded_events = select_data(loaded_events, pt_background_cut, pt_signal_cut, nhits, primary_only, true_edges, noise)
