@@ -278,7 +278,7 @@ class EmbeddingBase(LightningModule):
             )
         logging.info("Efficiency: {}".format(eff))
         logging.info("Purity: {}".format(pur))
-        logging.info(batch.event_file)
+        # logging.info(batch.event_file)
 
         return {
             "loss": loss,
