@@ -34,5 +34,5 @@ patience: 50
 regime: [[rp, hnm]]
 max_epochs: 50
 
-callbacks: 
+callbacks: [[EmbeddingTelemetry, EmbeddingBuilder]]
 wandb_save_dir: /global/cscratch1/sd/xju/exatrkx/ITK/wandb_data 
