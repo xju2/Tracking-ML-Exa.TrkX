@@ -19,7 +19,6 @@ dependencies = [
     "simple_slurm",
     "memory_profiler",
     "traintrack",
-    "trackml@ https://github.com/LAL/trackml-library/tarball/master#egg=trackml-3",
 ]
 
 setup(

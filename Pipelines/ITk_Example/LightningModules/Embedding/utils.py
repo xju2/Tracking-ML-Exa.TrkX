@@ -220,27 +220,6 @@ def build_edges(query, database, indices=None, r_max=1.0, k_max=10, return_indic
         return edge_list
 
 
-def build_knn(spatial, k):
-
-    if device == "cuda":
-        res = faiss.StandardGpuResources()
-        _, I = faiss.knn_gpu(res, spatial, spatial, k_max)
-    elif device == "cpu":
-        index = faiss.IndexFlatL2(spatial.shape[1])
-        index.add(spatial)
-        _, I = index.search(spatial, k_max)
-
-    ind = torch.Tensor.repeat(
-        torch.arange(I.shape[0], device=device), (I.shape[1], 1), 1
-    ).T
-    edge_list = torch.stack([ind, I])
-
-    # Remove self-loops
-    edge_list = edge_list[:, edge_list[0] != edge_list[1]]
-
-    return edge_list
-
-
 def get_best_run(run_label, wandb_save_dir):
     for (root_dir, dirs, files) in os.walk(wandb_save_dir + "/wandb"):
         if run_label in dirs:
