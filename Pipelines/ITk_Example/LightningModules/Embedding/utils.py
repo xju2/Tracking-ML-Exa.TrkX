@@ -1,3 +1,4 @@
+from operator import index
 import os
 import logging
     
@@ -43,7 +44,9 @@ def load_dataset(input_dir, num, pt_background_cut, pt_signal_cut, nhits, primar
                     x=torch.from_numpy(arrays['x']).float() / scales,
                     pid=torch.from_numpy(arrays['pid']),
                     hid=torch.from_numpy(arrays['hid']),
-                    signal_true_edges=torch.from_numpy(arrays['layerless_true_edges'])
+                    signal_true_edges=torch.from_numpy(arrays['layerless_true_edges']),
+                    event_file=event[:-4],
+                    pt=torch.from_numpy(arrays['pt']),
                 )
                 # loaded_event = torch.load(event, map_location=torch.device("cpu"))
                 loaded_events.append(loaded_event)
@@ -186,9 +189,12 @@ def graph_intersection(
 def build_edges(query, database, indices=None, r_max=1.0, k_max=10, return_indices=False):
     
     if using_faiss:
-        res = faiss.StandardGpuResources()
         index_flat = faiss.IndexFlatL2(query.shape[1])
-        gpu_index_flat = faiss.index_cpu_to_gpu(res, 0, index_flat)
+        if device == 'cuda':
+            res = faiss.StandardGpuResources()
+            gpu_index_flat = faiss.index_cpu_to_gpu(res, 0, index_flat)
+        else:
+            gpu_index_flat = index_flat
         gpu_index_flat.add(database.cpu().numpy())
         dists, idxs = gpu_index_flat.search(query.cpu().numpy(), k_max)
         dists = torch.from_numpy(dists).to(device)

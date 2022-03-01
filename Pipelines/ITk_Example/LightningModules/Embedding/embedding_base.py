@@ -174,7 +174,8 @@ class EmbeddingBase(LightningModule):
         e_spatial_ambiguous, y_cluster_ambiguous = graph_intersection(e_spatial_ambiguous, e_bidir)
         
         e_spatial = torch.cat([e_spatial_easy_fake.cpu(), e_spatial_ambiguous], dim=-1)
-        y_cluster = torch.cat([y_cluster_easy_fake, y_cluster_ambiguous])
+        y_cluster = torch.cat([y_cluster_easy_fake, y_cluster_ambiguous]).to(torch.long)
+
         
         return e_spatial, y_cluster
     
@@ -278,7 +279,8 @@ class EmbeddingBase(LightningModule):
             )
         logging.info("Efficiency: {}".format(eff))
         logging.info("Purity: {}".format(pur))
-        # logging.info(batch.event_file)
+        logging.info(batch.event_file)
+        print("what is wrong", type(y_cluster))
 
         return {
             "loss": loss,

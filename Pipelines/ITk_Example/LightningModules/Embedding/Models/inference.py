@@ -195,7 +195,7 @@ class EmbeddingBuilder(Callback):
                     if (
                         not os.path.exists(
                             os.path.join(
-                                self.output_dir, datatype, batch.event_file[-4:]
+                                self.output_dir, datatype, batch.event_file
                             )
                         )
                     ) or self.overwrite:
@@ -282,8 +282,8 @@ class EmbeddingBuilder(Callback):
     def save_downstream(self, batch, pl_module, datatype):
 
         with open(
-            os.path.join(self.output_dir, datatype, batch.event_file[-4:]), "wb"
+            os.path.join(self.output_dir, datatype, batch.event_file), "wb"
         ) as pickle_file:
             torch.save(batch, pickle_file)
 
-        logging.info("Saved event {}".format(batch.event_file[-4:]))
+        logging.info("Saved event {}".format(batch.event_file))
