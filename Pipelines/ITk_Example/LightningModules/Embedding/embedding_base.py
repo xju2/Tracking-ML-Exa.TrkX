@@ -93,7 +93,8 @@ class EmbeddingBase(LightningModule):
     def get_input_data(self, batch):
         
         if "ci" in self.hparams["regime"]:
-            input_data = torch.cat([batch.cell_data[:, :self.hparams["cell_channels"]], batch.x], axis=-1)
+            input_data = torch.cat([
+                batch.cell_data[:, :self.hparams["cell_channels"]], batch.x], axis=-1)
             input_data[input_data != input_data] = 0
         else:
             input_data = batch.x
@@ -104,13 +105,15 @@ class EmbeddingBase(LightningModule):
     def get_query_points(self, batch, spatial):
         
         query_indices = batch.signal_true_edges.unique()
-        query_indices = query_indices[torch.randperm(len(query_indices))][:self.hparams["points_per_batch"]]
+        query_indices = query_indices[
+            torch.randperm(len(query_indices))][:self.hparams["points_per_batch"]]
         query = spatial[query_indices]
         
         return query_indices, query
     
     def append_hnm_pairs(self, e_spatial, query, query_indices, spatial):
-        knn_edges = build_edges(query, spatial, query_indices, self.hparams["r_train"], self.hparams["knn"])
+        knn_edges = build_edges(query, spatial, query_indices,
+            self.hparams["r_train"], self.hparams["knn"])
         e_spatial = torch.cat(
             [
                 e_spatial,

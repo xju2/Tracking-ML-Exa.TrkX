@@ -46,13 +46,14 @@ def load_dataset(input_dir, num, pt_background_cut, pt_signal_cut, nhits, primar
                     pid=torch.from_numpy(arrays['pid']),
                     hid=torch.from_numpy(arrays['hid']),
                     signal_true_edges=torch.from_numpy(arrays['layerless_true_edges']),
-                    event_file=event[:-4],
+                    event_file=event,
                     pt=torch.from_numpy(arrays['pt']),
                     cell_data=torch.from_numpy(cell_data),
                 )
                 # loaded_event = torch.load(event, map_location=torch.device("cpu"))
+                # print(loaded_event)
                 loaded_events.append(loaded_event)
-                logging.info("Loaded event: {}".format(event))
+                # logging.info("Loaded event: {}".format(event))
             except:
                 raise RuntimeError("STOP", event, 'corrupted')
         print("loaded event", len(loaded_events))
