@@ -40,6 +40,7 @@ def load_dataset(input_dir, num, pt_background_cut, pt_signal_cut, nhits, primar
         for event in all_events[:num]:
             try:
                 arrays = np.load(event)
+                cell_data = arrays['cell_data']
                 loaded_event = Data(
                     x=torch.from_numpy(arrays['x']).float() / scales,
                     pid=torch.from_numpy(arrays['pid']),
@@ -47,14 +48,13 @@ def load_dataset(input_dir, num, pt_background_cut, pt_signal_cut, nhits, primar
                     signal_true_edges=torch.from_numpy(arrays['layerless_true_edges']),
                     event_file=event[:-4],
                     pt=torch.from_numpy(arrays['pt']),
+                    cell_data=torch.from_numpy(cell_data),
                 )
                 # loaded_event = torch.load(event, map_location=torch.device("cpu"))
                 loaded_events.append(loaded_event)
                 logging.info("Loaded event: {}".format(event))
             except:
-                print(event, "corrupted")
-                raise RuntimeError("STOP")
-                logging.info("Corrupted event file: {}".format(event))
+                raise RuntimeError("STOP", event, 'corrupted')
         print("loaded event", len(loaded_events))
         loaded_events = select_data(loaded_events, pt_background_cut, pt_signal_cut, nhits, primary_only, true_edges, noise)
         print(len(loaded_events))

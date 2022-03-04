@@ -105,9 +105,8 @@ class EmbeddingTelemetry(Callback):
         
         r_cuts = np.arange(0.1, self.hparams["r_test"], 0.1)
         
-        print(self.truth.shape)
-        print(self.distances < r_cuts[0])
-        print(self.distances.shape)
+        # print(self.truth.shape, self.distances < r_cuts[0])
+        # print(self.distances.shape)
         
         positives = np.array([self.truth[self.distances < r_cut].shape[0] for r_cut in r_cuts])
         true_positives = np.array([self.truth[self.distances < r_cut].sum() for r_cut in r_cuts])

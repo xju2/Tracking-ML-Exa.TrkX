@@ -275,12 +275,11 @@ class EmbeddingBase(LightningModule):
         if log:
             current_lr = self.optimizers().param_groups[0]["lr"]
             self.log_dict(
-                {"val_loss": loss, "eff": eff, "pur": pur, "current_lr": current_lr}
+                {"val_loss": loss, "val_eff": eff, "val_pur": pur, "current_lr": current_lr}
             )
         logging.info("Efficiency: {}".format(eff))
         logging.info("Purity: {}".format(pur))
         logging.info(batch.event_file)
-        print("what is wrong", type(y_cluster))
 
         return {
             "loss": loss,
@@ -296,7 +295,7 @@ class EmbeddingBase(LightningModule):
         """
 
         outputs = self.shared_evaluation(
-            batch, batch_idx, self.hparams["r_val"], 100, log=True
+            batch, batch_idx, self.hparams["r_val"], self.hparams['knn_val'], log=True
         )
 
         return outputs["loss"]
@@ -306,7 +305,7 @@ class EmbeddingBase(LightningModule):
         Step to evaluate the model's performance
         """
         outputs = self.shared_evaluation(
-            batch, batch_idx, self.hparams["r_test"], 1000, log=False
+            batch, batch_idx, self.hparams["r_test"], self.hparams['knn_val'], log=False
         )
 
         return outputs

@@ -1,7 +1,8 @@
 # Input/output configuration
-input_dir: /global/cscratch1/sd/xju/exatrkx/ITK/ttbar/features_barrel_pixel
-output_dir: /global/cscratch1/sd/xju/exatrkx/ITK/barrel_pixel
-project: BarrelPixel
+input_dir: /global/cscratch1/sd/xju/exatrkx/ITK/with_clustershape_ttbar/features_barrel_pixel
+output_dir: /global/cscratch1/sd/xju/exatrkx/ITK/barrel_pixel_shape
+project: BarrelPixelClusterShape
+overwrite: True
 sanity_steps: 0
 
 # Dataset parameters
@@ -15,24 +16,26 @@ noise: True
 
 # Model parameters
 spatial_channels: 3
-cell_channels: 8
+cell_channels: 9
 emb_hidden: 512
-nb_layer: [4]
-emb_dim: 8
+nb_layer: [10]
+emb_dim: 16
 weight: 5
 randomisation: 1
-points_per_batch: 10000
+points_per_batch: 20000
 r_train: 1.0
-r_val: 1.0
-r_test: 1.0
+r_val: 1.7
+r_test: 1.7
 knn: [30]
+knn_val: [40]
+knn_test: [40]
 warmup: 5000
 margin: 1
 lr: [0.0001]
 factor: 0.3
 patience: 50
-regime: [[rp, hnm]]
-max_epochs: 50
+regime: [[rp, hnm, ci]]
+max_epochs: 10
 
 callbacks: [[EmbeddingTelemetry, EmbeddingBuilder]]
 wandb_save_dir: /global/cscratch1/sd/xju/exatrkx/ITK/wandb_data 
